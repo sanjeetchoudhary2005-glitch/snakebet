@@ -1,0 +1,65 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: Snakebet
+      POSTGRES_PASSWORD: Snakebet
+      POSTGRES_DB: Snakebet
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U Snakebet -d Snakebet"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    # Note: the app uses Upstash REST for rate limiting in production.
+    # Local docker-compose falls back to in-memory rate limits unless
+    # UPSTASH_REDIS_REST_URL/TOKEN are configured.
+
+  websocket:
+    build:
+      context: .
+      dockerfile: Dockerfile.websocket
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql://Snakebet:Snakebet@postgres:5432/Snakebet
+      WS_HOST: 0.0.0.0
+      WS_PORT: 8080
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "8080:8080"
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql://Snakebet:Snakebet@postgres:5432/Snakebet
+      NEXT_PUBLIC_APP_URL: http://localhost:3000
+      WS_HOST: websocket
+      WS_PORT: 8080
+      SESSION_SECRET: change-me-to-a-32-char-minimum-secret
+      AUTH_SECRET: change-me-to-a-32-char-minimum-secret
+      ENCRYPTION_KEY: 0123456789abcdef0123456789abcdef
+    depends_on:
+      postgres:
+        condition: service_healthy
+      websocket:
+        condition: service_started
+    ports:
+      - "3000:3000"
+
+volumes:
+  postgres_data:

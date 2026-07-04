@@ -1,0 +1,10 @@
+{
+  "/api/live/snapshot/route": "app/api/live/snapshot/route.js",
+  "/api/user/onboarding/route": "app/api/user/onboarding/route.js",
+  "/api/user/route": "app/api/user/route.js",
+  "/api/transactions/route": "app/api/transactions/route.js",
+  "/api/user/balance/route": "app/api/user/balance/route.js",
+  "/api/auth/[...nextauth]/route": "app/api/auth/[...nextauth]/route.js",
+  "/page": "app/page.js",
+  "/login/page": "app/login/page.js"
+}

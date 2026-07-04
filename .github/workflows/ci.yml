@@ -1,0 +1,59 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: Snakebet
+          POSTGRES_PASSWORD: Snakebet
+          POSTGRES_DB: Snakebet
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U Snakebet -d Snakebet"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      DATABASE_URL: postgresql://Snakebet:Snakebet@localhost:5432/Snakebet
+      SESSION_SECRET: ci-session-secret-minimum-32-characters-long
+      AUTH_SECRET: ci-auth-secret-minimum-32-characters-long
+      ENCRYPTION_KEY: 0123456789abcdef0123456789abcdef
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Generate Prisma client
+        run: npx prisma generate
+
+      - name: Apply migrations
+        run: npx prisma migrate deploy
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Build
+        run: npm run build
+
+      - name: Wallet concurrency smoke test
+        run: npm run test:wallet
