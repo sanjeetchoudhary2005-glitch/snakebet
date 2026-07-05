@@ -1,0 +1,4 @@
+- [x] Implement guest login API route `/api/auth/guest/route.ts`
+- [x] Wire up `components/AuthModal.tsx` to handle forms and guest login
+- [x] Upgrade slot symbols in `components/games/SlotsGame.tsx` with premium inline SVGs
+- [x] Verify game betting and balance updates for Andar Bahar, Blackjack, Roulette, Slots, and other games (see `npm run test:phase1-games`)

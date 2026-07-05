@@ -1,0 +1,870 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id             String    @id @default(cuid())
+  email          String?   @unique
+  emailVerified  DateTime?
+  name           String?
+  image          String?
+  username       String    @unique @default(cuid())
+  password       String? // if using auth
+  role           String    @default("USER") // USER, ADMIN, SUPER_ADMIN
+  isActive       Boolean   @default(true)
+  balance        Decimal   @default(0) // Using Decimal for precision
+  totalDeposited Decimal   @default(0)
+  totalWithdrawn Decimal   @default(0)
+  totalWon       Decimal   @default(0)
+
+  // Referral fields
+  referralCode String  @unique @default(cuid())
+  referredBy   String?
+
+  // Verification fields
+  isVerified Boolean @default(false)
+
+  // Encrypted sensitive fields
+  upiId        String?
+  bankAccount  String?
+  cryptoWallet String?
+
+  // 2FA fields
+  twoFactorEnabled Boolean @default(false)
+  twoFactorSecret  String? // Encrypted
+
+  // Daily Reward
+  dailyStreak     Int       @default(0)
+  lastDailyReward DateTime?
+
+  // Audit & security fields
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  lastLogin         DateTime?
+  loginAttempts     Int       @default(0)
+  lockedUntil       DateTime?
+  hasSeenOnboarding Boolean   @default(false)
+  lastActiveAt      DateTime?
+
+  transactions        Transaction[]
+  games               Game[]
+  withdrawRequests    WithdrawRequest[]
+  securityLogs        SecurityLog[]
+  otps                Otp[]
+  userDailyRewards    UserDailyReward[]
+  raceEntries         RaceEntry[]
+  vipProgress         VipProgress?
+  dailyLogin          DailyLogin?
+  responsibleGaming   ResponsibleGamingSettings?
+  selfExclusions      SelfExclusion[]
+  ludoPlayers         LudoPlayer[]
+  ludoMoves           LudoMove[]
+  adminLogs           AdminLog[]                 @relation("AdminActor")
+  depositRequests     DepositRequest[]
+  promotionClaims     PromotionClaim[]
+  accounts            Account[]
+  sessions            Session[]
+  passwordResetTokens PasswordResetToken[]
+  teenPattiSeats      TeenPattiSeat[]
+  playerSessions      PlayerSession[]
+
+  @@index([role])
+  @@index([createdAt])
+  @@index([updatedAt])
+  @@index([lastLogin])
+  @@index([isVerified])
+  @@index([lastActiveAt])
+}
+
+model Otp {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  otp       String
+  expiresAt DateTime
+  used      Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([otp])
+  @@index([used])
+}
+
+model UserDailyReward {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  amount    Decimal
+  day       Int
+  claimedAt DateTime
+
+  @@index([userId])
+  @@index([claimedAt])
+}
+
+model Transaction {
+  id            String   @id @default(cuid())
+  userId        String
+  type          String // BET | WIN | DEPOSIT | WITHDRAWAL | BONUS | ADJUSTMENT
+  amount        Decimal
+  balanceBefore Decimal
+  balanceAfter  Decimal
+  gameId        String?
+  roundId       String?
+  method        String? // Payment method: UPI, CARD, CRYPTO, etc.
+  reference     String? // External transaction reference
+  reason        String?
+  adminUserId   String?
+  status        String   @default("completed")
+  createdAt     DateTime @default(now())
+  user          User     @relation(fields: [userId], references: [id])
+
+  @@index([userId, createdAt])
+  @@index([userId, type, createdAt])
+  @@index([type, createdAt])
+  @@index([status, createdAt])
+  @@index([gameId, createdAt])
+  @@index([roundId])
+  @@index([adminUserId])
+}
+
+model CrashRound {
+  id             String    @id @default(cuid())
+  serverSeed     String
+  serverSeedHash String
+  clientSeed     String
+  nonce          BigInt
+  crashPoint     Decimal
+  status         String    @default("pending") // pending | running | crashed
+  startedAt      DateTime?
+  endedAt        DateTime?
+  createdAt      DateTime  @default(now())
+
+  @@index([status])
+  @@index([createdAt])
+}
+
+model MinesRound {
+  id                String   @id @default(cuid())
+  userId            String
+  betAmount         Decimal
+  mineCount         Int
+  minePositions     String // hidden until round ends (JSON string)
+  revealedTiles     String   @default("[]") // JSON stringified array
+  currentMultiplier Float    @default(1.0)
+  status            String   @default("active") // active | cashed_out | busted
+  serverSeed        String
+  serverSeedHash    String
+  clientSeed        String
+  nonce             BigInt
+  createdAt         DateTime @default(now())
+
+  @@index([userId])
+  @@index([status])
+  @@index([createdAt])
+}
+
+model DiceRound {
+  id         String   @id @default(cuid())
+  userId     String
+  betAmount  Decimal
+  target     Int
+  direction  String // "over" | "under"
+  roll       Float
+  won        Boolean
+  payout     Decimal
+  serverSeed String
+  clientSeed String
+  nonce      BigInt
+  createdAt  DateTime @default(now())
+
+  @@index([userId])
+  @@index([createdAt])
+}
+
+model Race {
+  id        String      @id @default(cuid())
+  title     String
+  prizePool Decimal
+  type      String // WAGERED_VOLUME | BIGGEST_WIN | BIGGEST_MULTIPLIER
+  startAt   DateTime
+  endAt     DateTime
+  status    String      @default("upcoming") // upcoming | active | ended
+  entries   RaceEntry[]
+  createdAt DateTime    @default(now())
+
+  @@index([startAt])
+  @@index([endAt])
+  @@index([status])
+}
+
+model RaceEntry {
+  id     String  @id @default(cuid())
+  raceId String
+  userId String
+  score  Decimal @default(0)
+  rank   Int?
+  race   Race    @relation(fields: [raceId], references: [id])
+  user   User    @relation(fields: [userId], references: [id])
+
+  @@unique([raceId, userId])
+  @@index([userId])
+  @@index([score])
+}
+
+model VipProgress {
+  id                  String    @id @default(cuid())
+  userId              String    @unique
+  xpEarned            Decimal   @default(0)
+  currentTier         Int       @default(0)
+  unclaimedRakeback   Decimal   @default(0)
+  lastRakebackClaimAt DateTime?
+  user                User      @relation(fields: [userId], references: [id])
+
+  @@index([currentTier])
+}
+
+model DailyLogin {
+  id            String   @id @default(cuid())
+  userId        String   @unique
+  lastClaimDate DateTime
+  streakCount   Int      @default(1)
+  user          User     @relation(fields: [userId], references: [id])
+}
+
+model ResponsibleGamingSettings {
+  id                  String    @id @default(cuid())
+  userId              String    @unique
+  depositLimit        Decimal?
+  sessionLimitMinutes Int?
+  selfExcludedUntil   DateTime?
+  user                User      @relation(fields: [userId], references: [id])
+}
+
+model SelfExclusion {
+  id        String    @id @default(cuid())
+  userId    String
+  until     DateTime?
+  createdAt DateTime  @default(now())
+  user      User      @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@index([until])
+  @@index([createdAt])
+}
+
+// --- New Games from Prompt --- 
+
+model PlinkoRound {
+  id             String   @id @default(cuid())
+  userId         String
+  betAmount      Decimal
+  rows           Int
+  riskLevel      String
+  path           String // JSON stringified array of 0/1 per row (left/right)
+  bucketIndex    Int
+  multiplier     Float
+  serverSeed     String
+  serverSeedHash String
+  clientSeed     String
+  nonce          BigInt
+  createdAt      DateTime @default(now())
+
+  @@index([userId])
+  @@index([createdAt])
+}
+
+model LimboRound {
+  id               String   @id @default(cuid())
+  userId           String
+  betAmount        Decimal
+  targetMultiplier Float
+  resultMultiplier Float
+  won              Boolean
+  serverSeed       String
+  serverSeedHash   String
+  clientSeed       String
+  nonce            BigInt
+  createdAt        DateTime @default(now())
+
+  @@index([userId])
+  @@index([createdAt])
+}
+
+model WheelRound {
+  id             String   @id @default(cuid())
+  userId         String
+  betAmount      Decimal
+  riskLevel      String
+  segmentIndex   Int
+  multiplier     Float
+  serverSeed     String
+  serverSeedHash String
+  clientSeed     String
+  nonce          BigInt
+  createdAt      DateTime @default(now())
+
+  @@index([userId])
+  @@index([createdAt])
+}
+
+model KenoRound {
+  id             String   @id @default(cuid())
+  userId         String
+  betAmount      Decimal
+  pickedNumbers  String // JSON stringified array
+  drawnNumbers   String // JSON stringified array
+  matchCount     Int
+  multiplier     Float
+  serverSeed     String
+  serverSeedHash String
+  clientSeed     String
+  nonce          BigInt
+  createdAt      DateTime @default(now())
+
+  @@index([userId])
+  @@index([createdAt])
+}
+
+model HiLoRound {
+  id                String   @id @default(cuid())
+  userId            String
+  betAmount         Decimal
+  deck              String // JSON string of shuffled deck
+  currentIndex      Int      @default(0)
+  currentMultiplier Float    @default(1.0)
+  status            String   @default("active") // active | cashed_out | busted
+  serverSeed        String
+  serverSeedHash    String
+  clientSeed        String
+  nonce             BigInt
+  createdAt         DateTime @default(now())
+
+  @@index([userId])
+  @@index([status])
+  @@index([createdAt])
+}
+
+model DragonTowerRound {
+  id                String   @id @default(cuid())
+  userId            String
+  betAmount         Decimal
+  difficulty        String
+  levelLayout       String // JSON string, hidden trap positions per level
+  currentLevel      Int      @default(0)
+  currentMultiplier Float    @default(1.0)
+  status            String   @default("active")
+  serverSeed        String
+  serverSeedHash    String
+  clientSeed        String
+  nonce             BigInt
+  createdAt         DateTime @default(now())
+
+  @@index([userId])
+  @@index([status])
+  @@index([createdAt])
+}
+
+// --- Additional Quick Games ---
+
+model CoinFlipRound {
+  id             String   @id @default(cuid())
+  userId         String
+  betAmount      Decimal
+  choice         String // "heads" | "tails"
+  result         String
+  won            Boolean
+  payout         Decimal
+  serverSeed     String
+  serverSeedHash String
+  clientSeed     String
+  nonce          BigInt
+  createdAt      DateTime @default(now())
+
+  @@index([userId])
+  @@index([createdAt])
+}
+
+model RouletteRound {
+  id             String   @id @default(cuid())
+  userId         String
+  betAmount      Decimal
+  bets           String // JSON string of bets
+  result         Int
+  payout         Decimal
+  serverSeed     String
+  serverSeedHash String
+  clientSeed     String
+  nonce          BigInt
+  createdAt      DateTime @default(now())
+
+  @@index([userId])
+  @@index([createdAt])
+}
+
+model BlackjackRound {
+  id             String   @id @default(cuid())
+  userId         String
+  betAmount      Decimal
+  deck           String // JSON string of shuffled deck
+  playerHand     String // JSON stringified array
+  dealerHand     String // JSON stringified array
+  currentIndex   Int      @default(0)
+  status         String // "waiting" | "player_turn" | "dealer_turn" | "settled"
+  payout         Decimal
+  serverSeed     String
+  serverSeedHash String
+  clientSeed     String
+  nonce          BigInt
+  createdAt      DateTime @default(now())
+
+  @@index([userId])
+  @@index([status])
+  @@index([createdAt])
+}
+
+model SlotsRound {
+  id              String   @id @default(cuid())
+  userId          String
+  betAmount       Decimal
+  totalWin        Decimal  @default(0)
+  tumbleCount     Int      @default(0)
+  finalMultiplier Float    @default(1)
+  serverSeed      String
+  serverSeedHash  String
+  clientSeed      String
+  nonce           BigInt
+  createdAt       DateTime @default(now())
+
+  @@index([userId])
+  @@index([createdAt])
+}
+
+model AndarBaharRound {
+  id             String   @id @default(cuid())
+  userId         String
+  betAmount      Decimal
+  side           String
+  jokerCard      String
+  dealtCards     String
+  winningSide    String
+  matchIndex     Int
+  multiplier     Float
+  serverSeed     String
+  serverSeedHash String
+  clientSeed     String
+  nonce          BigInt
+  createdAt      DateTime @default(now())
+
+  @@index([userId])
+  @@index([createdAt])
+}
+
+model BaccaratRound {
+  id             String   @id @default(cuid())
+  userId         String
+  betAmount      Decimal
+  betType        String
+  playerCards    String
+  bankerCards    String
+  playerTotal    Int
+  bankerTotal    Int
+  winner         String
+  multiplier     Float
+  serverSeed     String
+  serverSeedHash String
+  clientSeed     String
+  nonce          BigInt
+  createdAt      DateTime @default(now())
+
+  @@index([userId])
+  @@index([createdAt])
+}
+
+model TeenPattiTable {
+  id           String           @id @default(cuid())
+  bootAmount   Decimal
+  maxPlayers   Int              @default(6)
+  status       String           @default("waiting") // waiting | dealing | blind_round | active_round | showdown | settled
+  currentPot   Decimal          @default(0)
+  currentStake Decimal          @default(0)
+  createdAt    DateTime         @default(now())
+  rounds       TeenPattiRound[]
+  seats        TeenPattiSeat[]
+}
+
+model TeenPattiSeat {
+  id        String         @id @default(cuid())
+  tableId   String
+  userId    String
+  seatIndex Int
+  status    String         @default("active") // active | folded | waiting
+  hasSeen   Boolean        @default(false)
+  cards     String // encrypted until showdown (JSON array)
+  betAmount Decimal        @default(0)
+  table     TeenPattiTable @relation(fields: [tableId], references: [id])
+  user      User           @relation(fields: [userId], references: [id])
+}
+
+model TeenPattiRound {
+  id             String         @id @default(cuid())
+  tableId        String
+  pot            Decimal
+  winnerId       String?
+  winningHand    String?
+  serverSeed     String
+  serverSeedHash String
+  clientSeed     String
+  nonce          BigInt
+  actions        String         @default("[]") // JSON array of game actions
+  createdAt      DateTime       @default(now())
+  table          TeenPattiTable @relation(fields: [tableId], references: [id])
+}
+
+model HouseRake {
+  id        String   @id @default(cuid())
+  gameType  String // TEEN_PATTI, BLACKJACK, etc.
+  amount    Decimal
+  roundId   String?
+  createdAt DateTime @default(now())
+
+  @@index([gameType])
+  @@index([createdAt])
+}
+
+model WithdrawRequest {
+  id             String    @id @default(cuid())
+  userId         String
+  user           User      @relation(fields: [userId], references: [id])
+  amount         Float
+  method         String // UPI, BANK, CRYPTO
+  accountDetails String? // JSON stringified (encrypted)
+  status         String // PENDING, APPROVED, REJECTED, COMPLETED
+  adminNotes     String?
+  createdAt      DateTime  @default(now())
+  processedAt    DateTime?
+
+  @@index([userId])
+  @@index([status])
+  @@index([createdAt])
+  @@index([userId, status])
+}
+
+model Game {
+  id         String   @id @default(cuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id])
+  type       String // MINES, CRASH, etc.
+  betAmount  Float
+  multiplier Float
+  result     String // WIN, LOSS
+  winAmount  Float
+  details    String? // JSON stringified
+  createdAt  DateTime @default(now())
+
+  @@index([userId])
+  @@index([createdAt])
+  @@index([userId, createdAt(sort: Desc)])
+  @@index([type, createdAt])
+  @@index([result, createdAt])
+}
+
+model LudoMatch {
+  id          String       @id @default(cuid())
+  status      String       @default("waiting") // waiting | active | completed
+  betAmount   Decimal
+  maxPlayers  Int          @default(2)
+  winnerId    String?
+  serverSeed  String
+  createdAt   DateTime     @default(now())
+  completedAt DateTime?
+  players     LudoPlayer[]
+  moves       LudoMove[]
+
+  @@index([status])
+  @@index([createdAt])
+  @@index([winnerId])
+}
+
+model LudoPlayer {
+  id       String    @id @default(cuid())
+  matchId  String
+  match    LudoMatch @relation(fields: [matchId], references: [id])
+  userId   String
+  user     User      @relation(fields: [userId], references: [id])
+  color    String // red|blue|yellow|green
+  position String // JSON stringified token positions [0-51, -1 for home]
+  joinedAt DateTime  @default(now())
+
+  @@index([matchId])
+  @@index([userId])
+}
+
+model LudoMove {
+  id        String    @id @default(cuid())
+  matchId   String
+  match     LudoMatch @relation(fields: [matchId], references: [id])
+  userId    String
+  user      User      @relation(fields: [userId], references: [id])
+  diceValue Int
+  fromPos   Int?
+  toPos     Int?
+  nonce     BigInt
+  createdAt DateTime  @default(now())
+
+  @@index([matchId])
+  @@index([userId])
+  @@index([createdAt])
+}
+
+model SecurityLog {
+  id        String   @id @default(cuid())
+  userId    String?
+  user      User?    @relation(fields: [userId], references: [id])
+  event     String // LOGIN, LOGOUT, PAYMENT, ADMIN, SUSPICIOUS, ANOMALY_DETECTED, INVALID_WEBHOOK_SIGNATURE
+  ip        String?
+  userAgent String?
+  details   String? // JSON stringified
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([createdAt])
+  @@index([event])
+}
+
+model AdminLog {
+  id        String   @id @default(cuid())
+  adminId   String
+  admin     User     @relation("AdminActor", fields: [adminId], references: [id])
+  action    String
+  targetId  String?
+  details   String?
+  createdAt DateTime @default(now())
+
+  @@index([adminId])
+  @@index([action])
+  @@index([targetId])
+  @@index([createdAt])
+}
+
+model PaymentAccount {
+  id        String   @id @default(cuid())
+  type      String // UPI | BANK | CRYPTO_BTC | CRYPTO_ETH | CRYPTO_USDT_TRC20 | CRYPTO_USDT_ERC20
+  label     String // e.g. "Main UPI", "Binance Wallet"
+  details   String // JSON stringified details
+  qrCodeUrl String? // Generated or stored QR code URL / base64
+  minAmount Decimal  @default(100)
+  maxAmount Decimal  @default(100000)
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  depositRequests DepositRequest[]
+
+  @@index([type])
+  @@index([isActive])
+}
+
+model DepositRequest {
+  id               String          @id @default(cuid())
+  userId           String
+  user             User            @relation(fields: [userId], references: [id])
+  paymentAccountId String?
+  paymentAccount   PaymentAccount? @relation(fields: [paymentAccountId], references: [id])
+  amount           Decimal
+  method           String // UPI, BANK, CRYPTO
+  transactionId    String?
+  screenshotUrl    String? // URL or base64 proof
+  status           String          @default("PENDING") // PENDING | APPROVED | REJECTED
+  adminNotes       String?
+  createdAt        DateTime        @default(now())
+  processedAt      DateTime?
+
+  @@index([userId])
+  @@index([status])
+  @@index([createdAt])
+}
+
+model GameSetting {
+  id         String   @id @default(cuid())
+  game       String   @unique // CRASH | MINES | DICE
+  isActive   Boolean  @default(true)
+  houseEdge  Float    @default(3.0) // RTP = 100 - houseEdge
+  minBet     Decimal  @default(10)
+  maxBet     Decimal  @default(50000)
+  configJson String   @default("{}")
+  updatedAt  DateTime @updatedAt
+}
+
+model Announcement {
+  id        String   @id @default(cuid())
+  title     String
+  content   String
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Promotion {
+  id                 String           @id @default(cuid())
+  title              String
+  type               String // WELCOME | RELOAD | FREE_BET
+  matchPercentage    Float            @default(100)
+  maxBonus           Decimal          @default(1000)
+  wageringMultiplier Int              @default(30)
+  minDepositRequired Decimal          @default(0)
+  startDate          DateTime
+  endDate            DateTime
+  isActive           Boolean          @default(true)
+  createdAt          DateTime         @default(now())
+  claims             PromotionClaim[]
+}
+
+model PromotionClaim {
+  id             String    @id @default(cuid())
+  userId         String
+  promotionId    String
+  amountCredited Decimal
+  claimedAt      DateTime  @default(now())
+  user           User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  promotion      Promotion @relation(fields: [promotionId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, promotionId])
+  @@index([userId])
+  @@index([promotionId])
+  @@index([claimedAt])
+}
+
+model DragonTigerRound {
+  id             String   @id @default(cuid())
+  userId         String
+  betAmount      Decimal
+  betType        String // "dragon", "tiger", "tie"
+  dragonCard     String // JSON string of BlackjackCard
+  tigerCard      String // JSON string of BlackjackCard
+  winner         String // "dragon", "tiger", "tie"
+  multiplier     Float
+  serverSeed     String
+  serverSeedHash String
+  clientSeed     String
+  nonce          BigInt
+  createdAt      DateTime @default(now())
+
+  @@index([userId])
+  @@index([createdAt])
+}
+
+model HousePool {
+  id                String   @id @default("global")
+  totalLiquidity    Decimal  @default(1000000.0) // Default ₹1,000,000 available liquidity
+  baselineLiquidity Decimal  @default(1000000.0) // baseline recorded for circuit breaker
+  currentExposure   Decimal  @default(0.0) // Potential exposure of open games
+  platformPaused    Boolean  @default(false) // Global circuit-breaker
+  updatedAt         DateTime @updatedAt
+}
+
+// --- NextAuth (OAuth) ---
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String?
+  access_token      String?
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?
+  session_state     String?
+  user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@index([userId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+model PasswordResetToken {
+  id        String    @id @default(cuid())
+  userId    String
+  tokenHash String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+model RazorpayWebhookEvent {
+  id          String   @id @default(cuid())
+  eventId     String   @unique
+  eventType   String
+  payload     String
+  status      String   @default("pending") // pending | processed | failed
+  error       String?
+  processedAt DateTime @default(now())
+
+  @@index([eventType])
+  @@index([status])
+  @@index([processedAt])
+}
+
+// --- Analytics Models ---
+
+model GameStats {
+  id            String   @id @default(cuid())
+  game          String
+  date          DateTime
+  totalBets     Int      @default(0)
+  totalWagered  Decimal  @default(0)
+  totalPaidOut  Decimal  @default(0)
+  houseProfit   Decimal  @default(0)
+  actualRTP     Float    @default(0)
+  uniquePlayers Int      @default(0)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@unique([game, date])
+}
+
+model PlayerSession {
+  id           String    @id @default(cuid())
+  userId       String
+  user         User      @relation(fields: [userId], references: [id])
+  sessionStart DateTime  @default(now())
+  sessionEnd   DateTime?
+  gamesPlayed  Int       @default(0)
+  netResult    Decimal   @default(0)
+  createdAt    DateTime  @default(now())
+
+  @@index([userId])
+  @@index([sessionStart])
+}
